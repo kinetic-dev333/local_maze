@@ -14,11 +14,14 @@ class Character(pygame.sprite.Sprite):
             self.image = pygame.image.load(self.image_filename).convert_alpha()
         self.x = x
         self.y = y
+        self.radius = 16
         self.speed = speed
         self.last_key = None
         self.vector = vec2d.vec2d(0, 0)
         self.last_position = (self.x, self.y)
         self.key_is_down = False
+        self.rect = self.image.get_rect()
+        self.last_rect = self.image.get_rect()
         
     def keydown(self, event):
         keys = pygame.key.get_pressed()
@@ -72,34 +75,20 @@ class Character(pygame.sprite.Sprite):
         else:
             if self.y + self.image.get_rect().bottom + dx < self.game.screen_height:
                 self.y += dy
-    
+
+        self.last_rect = self.rect.copy()
+        self.rect.left = self.x
+        self.rect.top = self.y
+
+    def move_back(self):
+        self.rect = self.last_rect
+        self.x = self.last_rect.left
+        self.y = self.last_rect.top
     def update(self):
 
         self.move(self.vector.x * self.speed, self.vector.y * self.speed)
         self.last_position = (self.x, self.y)
-        
-    def collision_detect(self):
-        self.image_w, self.image_h = self.image.get_size()
-        bounds_rect = self.screen.get_rect().inflate(
-                        -self.image_w, -self.image_h)
-        
-        #screen
-        if self.pos.x < bounds_rect.left:
-            self.pos.x = bounds_rect.left
-            self.direction.x *= -1
-        elif self.pos.x > bounds_rect.right:
-            self.pos.x = bounds_rect.right
-            self.direction.x *= -1
-        elif self.pos.y < bounds_rect.top:
-            self.pos.y = bounds_rect.top
-            self.direction.y *= -1
-        elif self.pos.y > bounds_rect.bottom:
-            self.pos.y = bounds_rect.bottom
-            self.direction.y *= -1
-    
-        #walls
-        
-        
+
     def blitme(self):
         self.update()
         draw_pos = self.image.get_rect().move(self.x, self.y)
@@ -113,6 +102,8 @@ class Creep(Character):
         
         self.screen = screen
         self.speed = speed
+        self.radius = 8
+        self.rect = pygame.Rect(init_position[0], init_position[1], 8, 8)
         
         # base_image holds the original image, positioned to
         # angle 0.
@@ -158,6 +149,8 @@ class Creep(Character):
             self.direction.y * self.speed * time_passed)
         
         self.pos += displacement
+        self.rect.left = self.pos.x
+        self.rect.top = self.pos.y
         
         # When the image is rotated, its size is changed.
         # We must take the size into account for detecting 
@@ -217,20 +210,13 @@ class Hero(Character):
 #------------------------------------------------------------------------------
 class Maze:
     def __init__(self, walls = None):
-        if walls:
-            self.walls = walls
-        else:
-            self.walls = []
-    
+        self.walls = walls if walls else []
     def add_wall(self, wall):
         self.walls.append(wall)
 
 class Wall:
     def __init__(self, x, y, width, height):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
+        self.rect = pygame.Rect(x, y, width, height)
         
 #------------------------------------------------------------------------------
  
@@ -249,6 +235,8 @@ class Game:
         self.creeps = []    
         self.hero = None
         self.maze = None
+
+        self.running = True
         
     def place_maze(self, maze):
         self.maze = maze
@@ -260,7 +248,7 @@ class Game:
         self.hero = hero    
     
     def start(self):
-        while True:
+        while self.running:
             time_passed = self.clock.tick(200)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -276,18 +264,20 @@ class Game:
             # Update and redraw all creeps
             for creep in self.creeps:
                 creep.update(time_passed)
+                if pygame.sprite.collide_circle(creep, self.hero):
+                    self.running = False
                 creep.blitme()
 
             #draw walls
             if self.maze:
                 for wall in self.maze.walls:
-                    pygame.draw.rect(self.screen, pygame.color.Color(110,20,30), 
-                                     (wall.x, wall.y, wall.width, wall.height), 0)
-                    
-            self.hero.blitme()
-            
-            pygame.display.flip()
+                    pygame.draw.rect(self.screen, pygame.color.Color(110,20,30), wall.rect, 0)
+                    if pygame.sprite.collide_rect(wall, self.hero):
+                        self.hero.move_back()
 
+            self.hero.blitme()
+
+            pygame.display.flip()
 
     def exit_game(self):
         sys.exit()
